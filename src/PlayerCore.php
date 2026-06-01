@@ -30,23 +30,27 @@ use Rehike\Player\{
  * made open to the public for anyone to use, whether that be for similar
  * or completely different purposes.
  * 
- * @author Isabella <kawapure@gmail.com>
+ * @author Isabella Lulamoon <kawapure@gmail.com>
  * @author Taniko Yamamoto <kirasicecreamm@gmail.com>
  * @author The Rehike Maintainers
  * 
  * @license Mozilla Public License 2.0
- * @version 3.2
+ * @version 3.3
  */
 class PlayerCore extends Configurable
 {
     static string $playerJsRegex = "#/s/player/[a-zA-Z0-9/\-_.]*base.js#";
     static string $playerCssRegex = "#/s/player/[a-zA-Z0-9/\-_.]*(www-player|www-player-webp|player-rtl).css#";
-    static string $embedJsRegex = "#/s/player/[a-zA-Z0-9/\-_.]*www-embed-player.js#";
+    static string $embedJsRegex = "#/s/(player|embeds)/[a-zA-Z0-9/\-_.]*www-embed-player(-es6)?.js#";
+    static string $embedJsRegex2 = "#/s/(player|embeds)/[a-zA-Z0-9/\-_.]*player(-|_)embed((-|_)es6)?.*?.js#";
     static string $stsRegex = "/signatureTimestamp:?\s*([0-9]*)/";
 
     static string $cacheDestDir = "cache";
     static string $cacheDestName = "player_cache"; // .json
     static int $cacheMaxTime = 18000; // 5 hours in seconds
+    
+    static string $updaterHostLanguage = "en";
+    static string $updaterGeolocation = "US";
 
     /**
      * Set configuration from an array.

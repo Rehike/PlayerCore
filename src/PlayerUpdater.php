@@ -7,6 +7,8 @@ use Rehike\Player\Exception\UpdaterException;
 
 // --- REHIKE-SPECIFIC IMPORTS ---
 use Rehike\ConfigManager\Config;
+use Rehike\i18n\RehikeLocale;
+
 // -------------------------------
 
 /**
@@ -21,12 +23,14 @@ use Rehike\ConfigManager\Config;
  * to cache the result for some reasonable amount of time instead
  * of requerying each subsequent visit.
  * 
- * @author Isabella <kawapure@gmail.com>
+ * @author Isabella Lulamoon <kawapure@gmail.com>
  * @author Taniko Yamamoto <kirasicecreamm@gmail.com>
  */
 class PlayerUpdater
 {
     /**
+     * Gets the page URL used to retrieve player resource URLs.
+     * 
      * The URL for the YouTube player JS can only be found
      * on certain pages, such as watch or embed pages. However,
      * the JS binary remains the same between both.
@@ -42,10 +46,11 @@ class PlayerUpdater
      * So the URL provided by default is that of "Me at the zoo", a
      * very important video in YouTube's history, one that receives
      * plenty of views, and one that's very likely never going anywhere.
-     * 
-     * TEMP: Force player to be en-US. Should be removed with i18n v2.
      */
-    protected static string $sourceUrl = "https://www.youtube.com/embed/jNQXAC9IVRw?hl=en&gl=US";
+    public static function getSourceUrl(string $hl, string $gl): string
+    {
+        return "https://www.youtube.com/embed/jNQXAC9IVRw?hl=$hl&gl=$gl";
+    }
 
     /**
      * Request all necessary player information for the requested player
@@ -57,56 +62,27 @@ class PlayerUpdater
 
         // Attempt to get application URLs from the
         // response.
-        $latestJsUrl = self::extractApplicationUrl($html);
-        $latestCssUrl = self::extractApplicationCss($html);
-        $embedJsUrl = self::extractEmbedUrl($html);
+        try
+        {
+            $latestJsUrl = self::extractApplicationUrl($html);
+            $latestCssUrl = self::extractApplicationCss($html);
+            $embedJsUrl = self::extractEmbedUrl($html);
+        }
+        catch (\Throwable $e)
+        {
+            \Rehike\Logging\DebugLogger::print("Embed app HTML: %s", $html);
+            throw $e;
+        }
 
         // Now get the sts from the application itself.
         $js = self::requestApplication(self::unrelativize($latestJsUrl));
 
         $sts = self::extractSts($js);
 
-        if (IS_REHIKE)
-            $playerChoice = Config::getConfigProp("appearance.playerChoice");
-        else
-            $playerChoice = "CURRENT";
-
-
-        if ("PLAYER_2022" === $playerChoice)
-        {
-            $effectiveJsUrl = "/s/player/c57c113c/player_ias.vflset/en_US/base.js";
-            $effectiveCssUrl = "/s/player/c57c113c/www-player.css";
-        }
-        else if ("PLAYER_2020" === $playerChoice)
-        {
-            $effectiveJsUrl = "/yts/jsbin/player_ias-vfl1Ng2HU/en_US/base.js";
-            $effectiveCssUrl = "/yts/cssbin/player-vflfo9Nwd/www-player-webp.css";
-        }
-		else if("PLAYER_2015_NEW" === $playerChoice)
-		{
-			$effectiveJsUrl = "/rehike/static/js/html5player/2015/html5player-new.js";
-			$effectiveCssUrl = "//s.ytimg.com/yts/cssbin/www-player-new-vfliB0u8F.css";
-        }
-		else if("PLAYER_2015" === $playerChoice)
-		{
-			$effectiveJsUrl = "/rehike/static/js/html5player/2015/html5player.js";
-			$effectiveCssUrl = "//s.ytimg.com/yts/cssbin/www-player-vflgv54Kk.css";
-		} 
-        else if ("PLAYER_2014" === $playerChoice)
-        {
-            $effectiveJsUrl = "/rehike/static/js/html5player/2014/html5player.js";
-            $effectiveCssUrl = "//s.ytimg.com/yts/cssbin/www-player-vfluwFMix.css";
-        }
-		else // CURRENT player, also as fallback for invalid player choice values
-        {
-            $effectiveJsUrl = $latestJsUrl;
-            $effectiveCssUrl = $latestCssUrl;
-        }
-
         // Pack these up and return:
         return (object)[
-            "baseJsUrl" => $effectiveJsUrl,
-            "baseCssUrl" => $effectiveCssUrl,
+            "baseJsUrl" => $latestJsUrl,
+            "baseCssUrl" => $latestCssUrl,
             "embedJsUrl" => $embedJsUrl,
             "signatureTimestamp" => $sts,
             "latestJsUrl" => $latestJsUrl,
@@ -126,7 +102,18 @@ class PlayerUpdater
      */
     public static function requestAppHtml(): string
     {
-        $response = Network::request(self::$sourceUrl);
+        if (IS_REHIKE)
+        {
+            $hl = RehikeLocale::getInnertubeLanguageId();
+            $gl = RehikeLocale::getCountryId();
+        }
+        else
+        {
+            $hl = PlayerCore::$updaterHostLanguage;
+            $gl = PlayerCore::$updaterGeolocation;
+        }
+        
+        $response = Network::request(self::getSourceUrl($hl, $gl));
 
         return $response;
     }
@@ -149,7 +136,9 @@ class PlayerUpdater
 
         if (false != $status)
         {
-            return $matches[0];
+            $url = $matches[0];
+            $url = str_replace("player_embed", "player", $url);
+            return $url;
         }
         else
         {
@@ -179,7 +168,7 @@ class PlayerUpdater
      */
     public static function extractEmbedUrl(string $html): string
     {
-        $status = preg_match(PlayerCore::$embedJsRegex, $html, $matches);
+        $status = preg_match(PlayerCore::$embedJsRegex2, $html, $matches);
 
         if (false != $status)
         {
@@ -187,7 +176,15 @@ class PlayerUpdater
         }
         else
         {
-            throw new UpdaterException("Failed to extract application URL");
+            $status = preg_match(PlayerCore::$embedJsRegex2, $html, $matches);
+            if (false != $status)
+            {
+                return $matches[0];
+            }
+            else
+            {
+                throw new UpdaterException("Failed to extract embed URL");
+            }
         }
     }
 
